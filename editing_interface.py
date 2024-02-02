@@ -5,10 +5,14 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 
-
 class MouseMoveAction(QUndoCommand):
-    def __init__(self, widget, startPoint, endPoint, prevImage):
+    def __init__(self, widget):
         super().__init__()
+        self.widget = widget
+
+class DrawAction(MouseMoveAction):
+    def __init__(self, widget, startPoint, endPoint, prevImage):
+        super().__init__(widget)
         self.widget = widget
         self.startPoint = startPoint
         self.endPoint = endPoint
@@ -21,6 +25,23 @@ class MouseMoveAction(QUndoCommand):
         painter.end()
         self.widget.update()
 
+
+    def undo(self):
+        self.widget.label = QPixmap(self.image)
+        self.widget.update()
+
+class FillAction(MouseMoveAction):
+    def __init__(self, widget, position, fillColor, prevImage):
+        super().__init__(widget)
+        self.position = position
+        self.fillColor = fillColor
+        self.image = prevImage
+
+    def redo(self):
+        self.widget.floodFill(self.image, self.position.x(), self.position.y(), self.fillColor)
+        self.widget.label = QPixmap.fromImage(self.image)
+        self.widget.update()
+    
     def undo(self):
         self.widget.label = QPixmap(self.image)
         self.widget.update()
@@ -92,16 +113,15 @@ class DrawingWidget(QWidget):
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton and self.drawing:
             self.drawing = False
-            move_action = MouseMoveAction(self, self.lastPoint, event.pos(), self.startImage)
-            self.undo_stack.push(move_action)
+            draw_action = DrawAction(self, self.lastPoint, event.pos(), self.startImage)
+            self.undo_stack.push(draw_action)
             self.update()
 
     def mouseDoubleClickEvent(self, event):
-        qimage = self.image.toImage()
         fillColor = self.brushColor  # 채울 색상 설정
-        afterimage = self.floodFill(qimage, event.pos().x(), event.pos().y(), fillColor)
-        self.image = QPixmap.fromImage(afterimage)
-        print('te')
+        image = self.label.toImage()
+        fill_action = FillAction(self, event.pos(), fillColor, image)
+        self.undo_stack.push(fill_action)
         self.update()
 
     def mouseLeaveEvent(self, event):
@@ -133,6 +153,8 @@ class DrawingWidget(QWidget):
 
     def floodFill(self, image, x, y, newColor):
         targetColor = image.pixelColor(x, y)
+        if targetColor == newColor:
+            return
 
         width, height = image.width(), image.height()
         stack = [(x, y)]
@@ -152,7 +174,6 @@ class DrawingWidget(QWidget):
                     stack.append((x, y - 1))
                 if y < height - 1:
                     stack.append((x, y + 1))
-        return image
 
 class ImageViewer(QWidget):
     def __init__(self):
