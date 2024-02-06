@@ -53,7 +53,7 @@ class DrawingWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         # set size
-        self.setMinimumSize(768, 768)
+        self.setMinimumSize(1024, 1024)
         self.lastPoint = QPoint()
         self.currentPoint = QPoint()
         self.drawing = False
@@ -102,12 +102,14 @@ class DrawingWidget(QWidget):
             self.startImage = QPixmap(self.label)
 
     def mouseMoveEvent(self, event):
+        self.currentPoint = event.pos()
         if self.drawing:
             painter = QPainter(self.label)
             painter.setPen(QPen(self.brushColor, self.brushSize, Qt.SolidLine, Qt.RoundCap))
             painter.drawLine(self.lastPoint, event.pos())
             self.lastPoint = event.pos()
             painter.end()
+            self.showBrush = True
             self.update()
 
     def mouseReleaseEvent(self, event):
@@ -190,12 +192,12 @@ class ImageViewer(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setFixedSize(1592, 903)
+        #self.setFixedSize(1592, 903)
         layout = QVBoxLayout()
 
         self.img_label = QLabel(self)
         self.canvas = DrawingWidget(self)
-        self.canvas.actionPerformed.connect(self.onActionPerformed)
+        #self.canvas.actionPerformed.connect(self.onActionPerformed)
         self.loadImages()
 
         # Horizontal layout for buttons
@@ -241,9 +243,17 @@ class ImageViewer(QWidget):
         self.opacity_slider.valueChanged.connect(self.updateOpacity)
         layout.addWidget(self.opacity_slider)
 
-        hbox = QHBoxLayout()
-        self.addColorButtons(hbox, self.canvas)
-        layout.addLayout(hbox)
+        self.color_mode = "IR"
+        self.colors_ir = ['#d60acf', '#9dc53f', '#79d2ec', '#de9846', '#c72c36', '#000000']
+        self.colors_rgb = ['#f19bdc', '#44690c', '#d60acf', '#f5f5dc', '#805472', '#f4f812']
+
+        self.color_box = QHBoxLayout()
+        self.addColorButtons(self.colors_ir, self.color_box, self.canvas)
+        layout.addLayout(self.color_box)
+
+        self.toggle_color_button = QPushButton('Toggle Colors', self)
+        self.toggle_color_button.clicked.connect(self.toggleColorButtons)
+        layout.addWidget(self.toggle_color_button)
 
         self.setLayout(layout)
         self.setWindowTitle('Image Viewer')
@@ -256,7 +266,7 @@ class ImageViewer(QWidget):
         if self.img_files:
             img_path = os.path.join("./img", self.img_files[self.img_index])
             img_pixmap = QPixmap(img_path)
-            scaled_img_pixmap = img_pixmap.scaled(img_pixmap.width() * 3, img_pixmap.height() * 3, Qt.KeepAspectRatio)
+            scaled_img_pixmap = img_pixmap.scaled(1024, 1024, Qt.KeepAspectRatio)
             self.img_label.setPixmap(scaled_img_pixmap)
 
             # Canvas에 이미지를 표시
@@ -290,22 +300,32 @@ class ImageViewer(QWidget):
         self.loadImages()
         self.index_label.setText(f"{self.img_index + 1} / {len(self.img_files)}")
 
-    def addColorButtons(self, layout, canvas):
+    def addColorButtons(self, colors, layout, canvas):
         # Add color button to the layout
-        colors = ['#d60acf', '#9dc53f', '#79d2ec', '#de9846', '#c72c36', '#000000']
-        self.buttons = []
+        self.color_buttons = []
         for color in colors:
             button = QPushButton(self)
             button.setFixedSize(50, 50)
             button.setStyleSheet("background-color: %s" % color)
             button.clicked.connect(lambda checked, c=color: canvas.setBrushColor(c))
             layout.addWidget(button)
-            self.buttons.append(button)
+            self.color_buttons.append(button)
 
-    def onActionPerformed(self):
-        # DrawingWidget에서 Undo/Redo가 수행될 때 수행할 작업
-        # 예: ImageViewer의 상태 갱신 또는 추가 작업 수행
-        print("Undo/Redo action performed in DrawingWidget")
+    def removeColorButtons(self, layout):
+        for button in self.color_buttons:
+            layout.removeWidget(button)
+            button.deleteLater()
+        self.color_buttons = []
+
+    def toggleColorButtons(self):
+        if self.color_mode == "IR":
+            self.removeColorButtons(self.layout())
+            self.addColorButtons(self.colors_rgb, self.color_box, self.canvas)
+            self.color_mode = "RGB"
+        else:
+            self.removeColorButtons(self.layout())
+            self.addColorButtons(self.colors_ir, self.color_box, self.canvas)
+            self.color_mode = "IR"
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_BracketLeft:
@@ -345,11 +365,8 @@ class ImageViewer(QWidget):
         # number to change color
         for i in range(6):
             if event.key() == Qt.Key_1 + i:
-                self.buttons[i].click()
+                self.color_buttons[i].click()
                 print(self.size())
-
-        if event.key() == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
-            print('sers')
 
 
     def saveLabel(self):
