@@ -53,7 +53,7 @@ class DrawingWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         # set size
-        self.setMinimumSize(1024, 1024)
+        self.setMinimumSize(512, 512)
         self.lastPoint = QPoint()
         self.currentPoint = QPoint()
         self.drawing = False
@@ -100,6 +100,7 @@ class DrawingWidget(QWidget):
             self.drawing = True
             self.lastPoint = event.pos()
             self.startImage = QPixmap(self.label)
+            super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
         self.currentPoint = event.pos()
@@ -118,6 +119,8 @@ class DrawingWidget(QWidget):
             draw_action = DrawAction(self, self.lastPoint, event.pos(), self.startImage)
             self.undo_stack.push(draw_action)
             self.update()
+            self.parent().setFocus(Qt.MouseFocusReason)
+            super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         fillColor = self.brushColor  # 채울 색상 설정
@@ -135,11 +138,6 @@ class DrawingWidget(QWidget):
             self.brushSize += 1
         if event.key() == Qt.Key_Minus:
             self.brushSize = max(1, self.brushSize - 1)
-        if event.key() == Qt.Key_Z and event.modifiers() & Qt.ControlModifier:
-            self.undo_stack.undo()
-        elif event.key() == Qt.Key_Y and event.modifiers() & Qt.ControlModifier:
-            self.undo_stack.redo()
-        self.update()
 
     def setBrushColor(self, color):
         # color is #RRGGBB
@@ -176,6 +174,11 @@ class DrawingWidget(QWidget):
                     stack.append((x, y - 1))
                 if y < height - 1:
                     stack.append((x, y + 1))
+    
+    def clearCanvas(self):
+        while self.undo_stack.canUndo():
+            self.undo_stack.undo()
+        self.update()
 
 class ImageViewer(QWidget):
     def __init__(self):
@@ -209,7 +212,7 @@ class ImageViewer(QWidget):
         save_button = QPushButton('Save', self)
         prev_button.clicked.connect(self.prevImage)
         next_button.clicked.connect(self.nextImage)
-        clear_button.clicked.connect(self.clearCanvas)
+        clear_button.clicked.connect(self.canvas.clearCanvas)
         save_button.clicked.connect(self.saveLabel)
 
         hbox.addWidget(self.index_label)
@@ -266,7 +269,7 @@ class ImageViewer(QWidget):
         if self.img_files:
             img_path = os.path.join("./img", self.img_files[self.img_index])
             img_pixmap = QPixmap(img_path)
-            scaled_img_pixmap = img_pixmap.scaled(1024, 1024, Qt.KeepAspectRatio)
+            scaled_img_pixmap = img_pixmap.scaled(512, 512, Qt.KeepAspectRatio)
             self.img_label.setPixmap(scaled_img_pixmap)
 
             # Canvas에 이미지를 표시
@@ -278,9 +281,6 @@ class ImageViewer(QWidget):
 
             # Canvas에 mask 이미지를 표시
             self.canvas.setLabelPixmap(self.mask_pixmap)
-    
-    def clearCanvas(self):
-        self.canvas.setLabelPixmap(self.mask_pixmap)
     
     # 슬라이더 값에 따라 투명도 업데이트
     def updateOpacity(self):
@@ -361,7 +361,13 @@ class ImageViewer(QWidget):
         # press c to clear canvas
         if event.key() == Qt.Key_C:
             print("C key pressed")
-            self.clearCanvas()
+            self.canvas.clearCanvas()
+        if event.modifiers() & Qt.ControlModifier and event.key() == Qt.Key_Z :
+            self.canvas.undo_stack.undo()
+            self.canvas.update()
+        if event.key() == event.modifiers() & Qt.ControlModifier and Qt.Key_Y :
+            self.canvas.undo_stack.redo()
+            self.canvas.update()
         # number to change color
         for i in range(6):
             if event.key() == Qt.Key_1 + i:
