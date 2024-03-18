@@ -53,7 +53,7 @@ class DrawingWidget(QWidget):
     def __init__(self, parent):
         super().__init__(parent)
         # set size
-        self.setMinimumSize(512, 512)
+        self.setMinimumSize(1024, 1024)
         self.lastPoint = QPoint()
         self.currentPoint = QPoint()
         self.drawing = False
@@ -269,7 +269,7 @@ class ImageViewer(QWidget):
         if self.img_files:
             img_path = os.path.join("./img", self.img_files[self.img_index])
             img_pixmap = QPixmap(img_path)
-            scaled_img_pixmap = img_pixmap.scaled(512, 512, Qt.KeepAspectRatio)
+            scaled_img_pixmap = img_pixmap.scaled(1024, 1024, Qt.KeepAspectRatio)
             self.img_label.setPixmap(scaled_img_pixmap)
 
             # Canvas에 이미지를 표시
