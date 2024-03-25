@@ -48,7 +48,6 @@ class FillAction(MouseMoveAction):
 
 class DrawingWidget(QWidget):
 
-    actionPerformed = pyqtSignal()
 
     def __init__(self, parent):
         super().__init__(parent)
@@ -96,11 +95,10 @@ class DrawingWidget(QWidget):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
-            self.setFocus(Qt.MouseFocusReason)  # 포커스를 DrawingWidget에 설정
             self.drawing = True
             self.lastPoint = event.pos()
             self.startImage = QPixmap(self.label)
-            super().mousePressEvent(event)
+
 
     def mouseMoveEvent(self, event):
         self.currentPoint = event.pos()
@@ -110,8 +108,8 @@ class DrawingWidget(QWidget):
             painter.drawLine(self.lastPoint, event.pos())
             self.lastPoint = event.pos()
             painter.end()
-            self.showBrush = True
-            self.update()
+        self.showBrush = True
+        self.update()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton and self.drawing:
@@ -119,15 +117,6 @@ class DrawingWidget(QWidget):
             draw_action = DrawAction(self, self.lastPoint, event.pos(), self.startImage)
             self.undo_stack.push(draw_action)
             self.update()
-            self.parent().setFocus(Qt.MouseFocusReason)
-            super().mouseReleaseEvent(event)
-
-    def mouseDoubleClickEvent(self, event):
-        fillColor = self.brushColor  # 채울 색상 설정
-        image = self.label.toImage()
-        fill_action = FillAction(self, event.pos(), fillColor, image)
-        self.undo_stack.push(fill_action)
-        self.update()
 
     def mouseLeaveEvent(self, event):
         self.showBrush = False
@@ -156,24 +145,28 @@ class DrawingWidget(QWidget):
         if targetColor == newColor:
             return
 
-        width, height = image.width(), image.height()
-        stack = [(x, y)]
+        self.stack = [(x, y)]
 
-        while stack:
-            x, y = stack.pop()
+        while self.stack:
+            x, y = self.stack.pop()
+            if not self.rect().contains(x, y):
+                continue
             currentColor = image.pixelColor(x, y)
             
             if currentColor == targetColor:
                 image.setPixelColor(x, y, newColor)
+                self.stack.append((x - 1, y))
+                self.stack.append((x + 1, y))
+                self.stack.append((x, y - 1))
+                self.stack.append((x, y + 1))
 
-                if x > 0:
-                    stack.append((x - 1, y))
-                if x < width - 1:
-                    stack.append((x + 1, y))
-                if y > 0:
-                    stack.append((x, y - 1))
-                if y < height - 1:
-                    stack.append((x, y + 1))
+    def paintCanvas(self):
+        if self.currentPoint:
+            fillColor = self.brushColor  # 채울 색상 설정
+            image = self.label.toImage()
+            fill_action = FillAction(self, self.currentPoint, fillColor, image)
+            self.undo_stack.push(fill_action)
+        self.update()
     
     def clearCanvas(self):
         while self.undo_stack.canUndo():
@@ -367,6 +360,10 @@ class ImageViewer(QWidget):
             self.canvas.update()
         if event.key() == event.modifiers() & Qt.ControlModifier and Qt.Key_Y :
             self.canvas.undo_stack.redo()
+            self.canvas.update()
+        if event.key() == Qt.Key_P:
+            print("P key pressed")
+            self.canvas.paintCanvas()
             self.canvas.update()
         # number to change color
         for i in range(6):
