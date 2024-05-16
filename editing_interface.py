@@ -16,18 +16,19 @@ class DrawAction(MouseMoveAction):
         self.widget = widget
         self.startPoint = startPoint
         self.endPoint = endPoint
+        self.prevImage = QPixmap(prevImage)
         self.image = QPixmap(prevImage)
 
     def redo(self):
+        self.widget.label = QPixmap(self.prevImage)
         painter = QPainter(self.widget.label)
         painter.setPen(QPen(self.widget.brushColor, self.widget.brushSize, Qt.SolidLine, Qt.RoundCap))
         painter.drawLine(self.startPoint, self.endPoint)
         painter.end()
         self.widget.update()
 
-
     def undo(self):
-        self.widget.label = QPixmap(self.image)
+        self.widget.label = QPixmap(self.prevImage)
         self.widget.update()
 
 class FillAction(MouseMoveAction):
@@ -35,23 +36,22 @@ class FillAction(MouseMoveAction):
         super().__init__(widget)
         self.position = position
         self.fillColor = fillColor
-        self.image = prevImage
+        self.prevImage = QPixmap(prevImage)
+        self.image = QPixmap(prevImage)
 
     def redo(self):
-        self.widget.floodFill(self.image, self.position.x(), self.position.y(), self.fillColor)
-        self.widget.label = QPixmap.fromImage(self.image)
+        image = self.prevImage.toImage()
+        self.widget.floodFill(image, self.position.x(), self.position.y(), self.fillColor)
+        self.widget.label = QPixmap.fromImage(image)
         self.widget.update()
     
     def undo(self):
-        self.widget.label = QPixmap(self.image)
+        self.widget.label = self.prevImage
         self.widget.update()
 
 class DrawingWidget(QWidget):
-
-
     def __init__(self, parent):
         super().__init__(parent)
-        # set size
         self.setMinimumSize(1024, 1024)
         self.lastPoint = QPoint()
         self.currentPoint = QPoint()
@@ -59,14 +59,12 @@ class DrawingWidget(QWidget):
         self.showBrush = False
         self.brushSize = 5
         self.brushColor = Qt.black
-        self.setMouseTracking(True)  # 마우스 트래킹 활성화
-        # Pixmap 생성
-        self.image = QPixmap(self.size())  # QPixmap을 위젯 크기로 초기화
-        self.image.fill(Qt.white)  # 초기 배경색 설정
+        self.setMouseTracking(True)
+        self.image = QPixmap(self.size())
+        self.image.fill(Qt.white)
         self.label = QPixmap(self.size())
         self.label.fill(Qt.white)
-        self.opacity = 0.5  # 투명도 초기값 50%
-        #undo 스택 생성
+        self.opacity = 0.5
         self.undo_stack = QUndoStack(self)
         self.startImage = None
 
@@ -80,11 +78,10 @@ class DrawingWidget(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.drawPixmap(0, 0, self.image)  # QPixmap을 위젯에 그립니다.
-        painter.setOpacity(self.opacity)  # 예시로 50% 투명도 설정
+        painter.drawPixmap(0, 0, self.image)
+        painter.setOpacity(self.opacity)
         painter.drawPixmap(0, 0, self.label)
         if self.showBrush:
-            # 브러시 사이즈를 표시하는 원 그리기
             painter.setPen(QPen(Qt.black, 1, Qt.DotLine))
             if isinstance(self.brushColor, Qt.GlobalColor):
                 color = QColor(self.brushColor)
@@ -98,7 +95,6 @@ class DrawingWidget(QWidget):
             self.drawing = True
             self.lastPoint = event.pos()
             self.startImage = QPixmap(self.label)
-
 
     def mouseMoveEvent(self, event):
         self.currentPoint = event.pos()
@@ -129,7 +125,6 @@ class DrawingWidget(QWidget):
             self.brushSize = max(1, self.brushSize - 1)
 
     def setBrushColor(self, color):
-        # color is #RRGGBB
         self.brushColor = QColor(color)
         self.update()
     
@@ -162,16 +157,19 @@ class DrawingWidget(QWidget):
 
     def paintCanvas(self):
         if self.currentPoint:
-            fillColor = self.brushColor  # 채울 색상 설정
+            fillColor = self.brushColor
             image = self.label.toImage()
-            fill_action = FillAction(self, self.currentPoint, fillColor, image)
+            fill_action = FillAction(self, self.currentPoint, fillColor, self.label)
             self.undo_stack.push(fill_action)
         self.update()
-    
+
     def clearCanvas(self):
         while self.undo_stack.canUndo():
             self.undo_stack.undo()
         self.update()
+
+
+
 
 class ImageViewer(QWidget):
     def __init__(self):
@@ -181,22 +179,17 @@ class ImageViewer(QWidget):
         self.mask_index = 0
         self.img_files = sorted([f for f in os.listdir("./img") if f.endswith(('.png', '.jpg', '.jpeg'))])
         self.mask_files = sorted([f for f in os.listdir("./mask") if f.endswith(('.png', '.jpg', '.jpeg'))])
-
-        # Assert that the number of images and masks are equal
         assert len(self.img_files) == len(self.mask_files)
 
+        self.undo_stacks = {f: QUndoStack(self) for f in self.img_files}
         self.initUI()
 
     def initUI(self):
-        #self.setFixedSize(1592, 903)
         layout = QVBoxLayout()
-
         self.img_label = QLabel(self)
         self.canvas = DrawingWidget(self)
-        #self.canvas.actionPerformed.connect(self.onActionPerformed)
         self.loadImages()
 
-        # Horizontal layout for buttons
         hbox = QHBoxLayout()
         self.index_label = QLabel(f"{self.img_index + 1} / {len(self.img_files)}", self)
         prev_button = QPushButton('Previous', self)
@@ -216,12 +209,9 @@ class ImageViewer(QWidget):
 
         layout.addLayout(hbox)
 
-        # Horizontal layout for images
         hbox = QHBoxLayout()
         hbox.addWidget(self.img_label)
         hbox.addWidget(self.canvas)
-
-        # add slider that controls brush size
         self.brush_slider = QSlider(Qt.Vertical, self)
         self.brush_slider.setMinimum(1)
         self.brush_slider.setMaximum(50)
@@ -230,12 +220,10 @@ class ImageViewer(QWidget):
         hbox.addWidget(self.brush_slider)
 
         layout.addLayout(hbox)
-
-        # 슬라이더 추가
         self.opacity_slider = QSlider(Qt.Horizontal, self)
         self.opacity_slider.setMinimum(0)
         self.opacity_slider.setMaximum(100)
-        self.opacity_slider.setValue(50)  # 초기값 50%로 설정
+        self.opacity_slider.setValue(50)
         self.opacity_slider.valueChanged.connect(self.updateOpacity)
         layout.addWidget(self.opacity_slider)
 
@@ -254,9 +242,6 @@ class ImageViewer(QWidget):
         self.setLayout(layout)
         self.setWindowTitle('Image Viewer')
         self.setGeometry(400, 300, 350, 300)
-
-        # print fixed window size
-    
     
     def loadImages(self):
         if self.img_files:
@@ -264,18 +249,17 @@ class ImageViewer(QWidget):
             img_pixmap = QPixmap(img_path)
             scaled_img_pixmap = img_pixmap.scaled(1024, 1024, Qt.KeepAspectRatio)
             self.img_label.setPixmap(scaled_img_pixmap)
-
-            # Canvas에 이미지를 표시
             self.canvas.setImagePixmap(img_pixmap)
 
         if self.mask_files:
             mask_path = os.path.join("./mask", self.mask_files[self.mask_index])
             self.mask_pixmap = QPixmap(mask_path)
-
-            # Canvas에 mask 이미지를 표시
             self.canvas.setLabelPixmap(self.mask_pixmap)
-    
-    # 슬라이더 값에 따라 투명도 업데이트
+        
+        # Update undo stack for the current image
+        current_img_file = self.img_files[self.img_index]
+        self.canvas.undo_stack = self.undo_stacks[current_img_file]
+
     def updateOpacity(self):
         self.opacity = self.opacity_slider.value() / 100
         self.canvas.opacity = self.opacity
@@ -294,7 +278,6 @@ class ImageViewer(QWidget):
         self.index_label.setText(f"{self.img_index + 1} / {len(self.img_files)}")
 
     def addColorButtons(self, colors, layout, canvas):
-        # Add color button to the layout
         self.color_buttons = []
         for color in colors:
             button = QPushButton(self)
@@ -326,51 +309,49 @@ class ImageViewer(QWidget):
             self.canvas.setBrushSize(self.canvas.brushSize - 10)
             self.canvas.update()
             self.brush_slider.setValue(self.canvas.brushSize)
-        if event.key() == Qt.Key_BracketRight:
+        elif event.key() == Qt.Key_BracketRight:
             print("Right bracket key pressed")
             self.canvas.setBrushSize(self.canvas.brushSize + 10)
             self.canvas.update()
             self.brush_slider.setValue(self.canvas.brushSize)
-        # < and > keys
-        if event.key() == Qt.Key_Comma:
+        elif event.key() == Qt.Key_Comma:
             print("Comma key pressed")
             self.saveLabel()
             self.prevImage()
-        if event.key() == Qt.Key_Period:
+        elif event.key() == Qt.Key_Period:
             print("Period key pressed")
             self.saveLabel()
             self.nextImage()
-        # ctrl + s to save
-        if event.modifiers() & Qt.ControlModifier and event.key() == Qt.Key_S:
-            print("Ctrl + S key pressed")
-            self.saveLabel()
-        # - = for changing opacity
-        if event.key() == Qt.Key_Minus:
+        elif event.key() == Qt.Key_Minus:
             print("Minus key pressed")
             self.opacity_slider.setValue(self.opacity_slider.value() - 10)
-        if event.key() == Qt.Key_Equal:
+        elif event.key() == Qt.Key_Equal:
             print("Equal key pressed")
             self.opacity_slider.setValue(self.opacity_slider.value() + 10)
-        # press c to clear canvas
-        if event.key() == Qt.Key_C:
+        elif event.key() == Qt.Key_C:
             print("C key pressed")
-            self.canvas.clearCanvas()
-        if event.modifiers() & Qt.ControlModifier and event.key() == Qt.Key_Z :
-            self.canvas.undo_stack.undo()
-            self.canvas.update()
-        if event.key() == event.modifiers() & Qt.ControlModifier and Qt.Key_Y :
-            self.canvas.undo_stack.redo()
-            self.canvas.update()
-        if event.key() == Qt.Key_P:
+            self.canvas.clearCanvas()        
+        elif event.key() == Qt.Key_P:
             print("P key pressed")
             self.canvas.paintCanvas()
             self.canvas.update()
-        # number to change color
+        elif event.modifiers() & Qt.ControlModifier:
+            if event.key() == Qt.Key_S:
+                print("Ctrl + S key pressed")
+                self.saveLabel()
+            elif event.key() == Qt.Key_Z:
+                print("Ctrl + z key pressed")
+                self.canvas.undo_stack.undo()
+                self.canvas.update()
+            elif event.key() == Qt.Key_Y:
+                print("Ctrl + y key pressed")
+                self.canvas.undo_stack.redo()
+                self.canvas.update()
+        # number keys to change color
         for i in range(6):
             if event.key() == Qt.Key_1 + i:
                 self.color_buttons[i].click()
                 print(self.size())
-
 
     def saveLabel(self):
         print(f"Saving label {os.path.join('./mask', self.mask_files[self.mask_index])}")
