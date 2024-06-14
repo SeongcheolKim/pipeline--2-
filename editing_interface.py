@@ -17,10 +17,9 @@ class DrawAction(MouseMoveAction):
         self.startPoint = startPoint
         self.endPoint = endPoint
         self.prevImage = QPixmap(prevImage)
-        self.image = QPixmap(prevImage)
+        self.currentImage = QPixmap(prevImage)
 
     def redo(self):
-        self.widget.label = QPixmap(self.prevImage)
         painter = QPainter(self.widget.label)
         painter.setPen(QPen(self.widget.brushColor, self.widget.brushSize, Qt.SolidLine, Qt.RoundCap))
         painter.drawLine(self.startPoint, self.endPoint)
@@ -30,6 +29,8 @@ class DrawAction(MouseMoveAction):
     def undo(self):
         self.widget.label = QPixmap(self.prevImage)
         self.widget.update()
+
+
 
 class FillAction(MouseMoveAction):
     def __init__(self, widget, position, fillColor, prevImage):
@@ -56,7 +57,7 @@ class DrawingWidget(QWidget):
         self.lastPoint = QPoint()
         self.currentPoint = QPoint()
         self.drawing = False
-        self.showBrush = False
+        self.showBrush = True
         self.brushSize = 5
         self.brushColor = Qt.black
         self.setMouseTracking(True)
@@ -83,10 +84,7 @@ class DrawingWidget(QWidget):
         painter.drawPixmap(0, 0, self.label)
         if self.showBrush:
             painter.setPen(QPen(Qt.black, 1, Qt.DotLine))
-            if isinstance(self.brushColor, Qt.GlobalColor):
-                color = QColor(self.brushColor)
-            else:
-                color = self.brushColor
+            color = QColor(self.brushColor)
             painter.setBrush(QBrush(QColor(color.red(), color.green(), color.blue(), 150), Qt.SolidPattern))
             painter.drawEllipse(self.currentPoint, self.brushSize / 2, self.brushSize / 2)
 
@@ -101,28 +99,28 @@ class DrawingWidget(QWidget):
         if self.drawing:
             painter = QPainter(self.label)
             painter.setPen(QPen(self.brushColor, self.brushSize, Qt.SolidLine, Qt.RoundCap))
-            painter.drawLine(self.lastPoint, event.pos())
-            self.lastPoint = event.pos()
+            painter.drawLine(self.lastPoint, self.currentPoint)
+            self.lastPoint = self.currentPoint
             painter.end()
-        self.showBrush = True
         self.update()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton and self.drawing:
             self.drawing = False
-            draw_action = DrawAction(self, self.lastPoint, event.pos(), self.startImage)
-            self.undo_stack.push(draw_action)
+            endPoint = event.pos()
+            draw_action = DrawAction(self, self.lastPoint, endPoint, self.startImage)
+            draw_action.redo()  # 마지막 그리기 작업을 수행하여 화면에 반영
+            self.undo_stack.push(draw_action)  # undo 스택에 추가
             self.update()
 
-    def mouseLeaveEvent(self, event):
-        self.showBrush = False
+    def enterEvent(self, event):
+        self.showBrush = True
+        self.currentPoint = self.mapFromGlobal(QCursor.pos())
         self.update()
 
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Plus:
-            self.brushSize += 1
-        if event.key() == Qt.Key_Minus:
-            self.brushSize = max(1, self.brushSize - 1)
+    def leaveEvent(self, event):
+        self.showBrush = False
+        self.update()
 
     def setBrushColor(self, color):
         self.brushColor = QColor(color)
@@ -161,6 +159,7 @@ class DrawingWidget(QWidget):
             image = self.label.toImage()
             fill_action = FillAction(self, self.currentPoint, fillColor, self.label)
             self.undo_stack.push(fill_action)
+            fill_action.redo()  # redo() 메소드를 즉시 호출하여 액션을 수행합니다.
         self.update()
 
     def clearCanvas(self):
@@ -305,56 +304,43 @@ class ImageViewer(QWidget):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_BracketLeft:
-            print("Left bracket key pressed")
             self.canvas.setBrushSize(self.canvas.brushSize - 10)
             self.canvas.update()
             self.brush_slider.setValue(self.canvas.brushSize)
         elif event.key() == Qt.Key_BracketRight:
-            print("Right bracket key pressed")
             self.canvas.setBrushSize(self.canvas.brushSize + 10)
             self.canvas.update()
             self.brush_slider.setValue(self.canvas.brushSize)
         elif event.key() == Qt.Key_Comma:
-            print("Comma key pressed")
             self.saveLabel()
             self.prevImage()
         elif event.key() == Qt.Key_Period:
-            print("Period key pressed")
             self.saveLabel()
             self.nextImage()
         elif event.key() == Qt.Key_Minus:
-            print("Minus key pressed")
             self.opacity_slider.setValue(self.opacity_slider.value() - 10)
         elif event.key() == Qt.Key_Equal:
-            print("Equal key pressed")
             self.opacity_slider.setValue(self.opacity_slider.value() + 10)
         elif event.key() == Qt.Key_C:
-            print("C key pressed")
             self.canvas.clearCanvas()        
         elif event.key() == Qt.Key_P:
-            print("P key pressed")
             self.canvas.paintCanvas()
             self.canvas.update()
         elif event.modifiers() & Qt.ControlModifier:
             if event.key() == Qt.Key_S:
-                print("Ctrl + S key pressed")
                 self.saveLabel()
             elif event.key() == Qt.Key_Z:
-                print("Ctrl + z key pressed")
                 self.canvas.undo_stack.undo()
                 self.canvas.update()
             elif event.key() == Qt.Key_Y:
-                print("Ctrl + y key pressed")
                 self.canvas.undo_stack.redo()
                 self.canvas.update()
         # number keys to change color
         for i in range(6):
             if event.key() == Qt.Key_1 + i:
                 self.color_buttons[i].click()
-                print(self.size())
 
     def saveLabel(self):
-        print(f"Saving label {os.path.join('./mask', self.mask_files[self.mask_index])}")
         self.canvas.saveLabel(os.path.join('./mask', self.mask_files[self.mask_index]))
 
 if __name__ == '__main__':
